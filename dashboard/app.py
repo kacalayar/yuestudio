@@ -154,7 +154,16 @@ def generate_song(
         adapters=adapters or None,
     )
 
-    result = client.generate_and_wait(payload)
+    try:
+        result = client.generate_and_wait(payload)
+    except Exception as exc:
+        return (
+            None,
+            abc_score or "",
+            semantic_tokens_in or "",
+            f"⚠️ Gagal terhubung / generate di ace-server (`{client.base_url}`): {exc}",
+            list_library_rows(),
+        )
     safe_title = "".join(c if c.isalnum() or c in "-_" else "_" for c in (title or "track").strip()) or "track"
     stamp = time.strftime("%Y%m%d_%H%M%S")
     audio_path = LIBRARY_DIR / f"{stamp}_{safe_title}.{result.audio_ext}"
