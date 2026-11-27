@@ -7,7 +7,8 @@ BIN_DIR="$WORKSPACE/bin"
 MODELS_DIR="$WORKSPACE/models"
 QUANT="${YUE_QUANT:-Q8_0}"
 BUILD_TRAINER="${BUILD_LORA_TRAINER:-1}"
-CUDA_ARCHS="${CMAKE_CUDA_ARCHITECTURES:-75;80;86;89}"
+DETECTED_ARCH="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 | tr -d '.' || true)"
+CUDA_ARCHS="${CMAKE_CUDA_ARCHITECTURES:-${DETECTED_ARCH:-75;80;86;89}}"
 
 mkdir -p "$BIN_DIR" "$MODELS_DIR" "$WORKSPACE/adapters" "$WORKSPACE/library" "$WORKSPACE/datasets" "$WORKSPACE/trained_loras"
 
