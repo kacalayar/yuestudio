@@ -94,8 +94,8 @@ def _resolve_trainer_bin(cfg: LoraTrainConfig) -> str:
 
 def _trainer_models_dir(cfg: LoraTrainConfig) -> Path:
     if cfg.vae_model:
-        return Path(cfg.vae_model).parent / "trainer"
-    return default_workspace_root() / "models" / "trainer"
+        return Path(cfg.vae_model).parent
+    return default_workspace_root() / "models"
 
 
 def _ensure_trainer_models(cfg: LoraTrainConfig) -> Iterator[str]:
@@ -105,17 +105,11 @@ def _ensure_trainer_models(cfg: LoraTrainConfig) -> Iterator[str]:
     t_dir = _trainer_models_dir(cfg)
     t_dir.mkdir(parents=True, exist_ok=True)
 
-    # Clean up legacy symlinks from Serveurperso models that cause GGUF metadata mismatch
-    parent_models = t_dir.parent
-    for old_link in parent_models.glob("yue2-*.gguf"):
-        if old_link.is_symlink():
-            old_link.unlink(missing_ok=True)
-
     required = ["yue2-vae-standard-f32.gguf", "yue2-lm-q8_0.gguf", "yue2-tok-f16.gguf"]
     for fname in required:
         dest = t_dir / fname
         if not dest.exists():
-            yield f"⬇️ Mengunduh {fname} dari scragnog/YuE2-GGUF (khusus ace-train)...\n"
+            yield f"⬇️ Mengunduh {fname} dari scragnog/YuE2-GGUF...\n"
             hf_hub_download(repo_id="scragnog/YuE2-GGUF", filename=fname, local_dir=str(t_dir))
             yield f"✅ {fname} siap.\n"
 
@@ -176,30 +170,33 @@ def _run_and_stream(cmd: list[str], env: dict[str, str]) -> Iterator[tuple[str, 
 
 
 def _pause_yue_server() -> bool:
-    """Stop yue-server temporarily to free GPU VRAM for training."""
-    try:
-        res = subprocess.run(["pgrep", "-f", "yue-server"], capture_output=True, text=True)
-        if res.returncode == 0 and res.stdout.strip():
-            subprocess.run(["pkill", "-f", "yue-server"], check=False)
-            return True
-    except Exception:
-        pass
-    return False
+    """Stop ace-server / yue-server temporarily to free GPU VRAM for training."""
+    paused = False
+    for proc_name in ("ace-server", "yue-server"):
+        try:
+            res = subprocess.run(["pgrep", "-f", proc_name], capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout.strip():
+                subprocess.run(["pkill", "-f", proc_name], check=False)
+                paused = True
+        except Exception:
+            pass
+    return paused
 
 
 def _restart_yue_server(bin_dir: Path) -> bool:
-    """Restart yue-server in the background if model env vars are available."""
-    model_file = os.environ.get("YUE_MODEL_FILE", "")
-    vae_file = os.environ.get("YUE_VAE_FILE", "")
-    server_bin = os.environ.get("YUE_SERVER_BIN", str(bin_dir / "yue-server"))
-    if not (model_file and vae_file and Path(server_bin).exists()):
+    """Restart ace-server in the background."""
+    ws = default_workspace_root()
+    models_dir = os.environ.get("YUE_MODELS_DIR", str(ws / "models"))
+    adapters_dir = os.environ.get("YUE_ADAPTERS_DIR", str(ws / "adapters"))
+    server_bin = os.environ.get("YUE_SERVER_BIN", str(bin_dir / "ace-server"))
+    if not Path(server_bin).exists():
         return False
     env = os.environ.copy()
     env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else str(bin_dir)
-    log_path = default_workspace_root() / "yue-server.log"
+    log_path = ws / "yue-server.log"
     log_f = open(log_path, "a")
     subprocess.Popen(
-        [server_bin, "--host", "0.0.0.0", "--port", "8087", "--model", model_file, "--vae", vae_file],
+        [server_bin, "--models", models_dir, "--adapters", adapters_dir, "--host", "0.0.0.0", "--port", "8087"],
         stdout=log_f,
         stderr=subprocess.STDOUT,
         env=env,

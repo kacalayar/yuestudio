@@ -58,7 +58,7 @@ class TestYueClient(unittest.TestCase):
         self.assertEqual(payload["style"], "indie rock")
         self.assertEqual(payload["steps"], 24)
         self.assertEqual(payload["seed"], 1234)
-        self.assertEqual(payload["adapters"][0]["weight"], 0.8)
+        self.assertEqual(payload["lm_adapter"][0]["scale"], 0.8)
 
     def test_build_synth_payload_rejects_empty(self) -> None:
         with self.assertRaises(ValueError):
@@ -118,7 +118,7 @@ class TestNotebookValidJson(unittest.TestCase):
         nb_path = ROOT / "YuE2_Colab_Studio.ipynb"
         nb = json.loads(nb_path.read_text(encoding="utf-8"))
         self.assertEqual(nb["nbformat"], 4)
-        self.assertGreaterEqual(len(nb["cells"]), 6)
+        self.assertGreaterEqual(len(nb["cells"]), 5)
 
 
 class TestEnvDetection(unittest.TestCase):

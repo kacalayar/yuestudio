@@ -247,9 +247,9 @@ def handle_start_training(
         max_updates=int(steps),
         save_every=int(save_every),
         preset=preset,
-        base_model=str(MODELS_DIR / "YuE2-3B-Q8_0.gguf"),
-        vae_model=str(MODELS_DIR / "YuE2-Vae-F32.gguf"),
-        tokenizer_model=str(MODELS_DIR / "yue2-mothersuperior-realaudio-tokenizer-v4-Q8_0.gguf"),
+        base_model=str(MODELS_DIR / "yue2-lm-q8_0.gguf"),
+        vae_model=str(MODELS_DIR / "yue2-vae-standard-f32.gguf"),
+        tokenizer_model=str(MODELS_DIR / "yue2-tok-f16.gguf"),
     )
     buf = ""
     for chunk in stream_training(cfg):
@@ -276,7 +276,7 @@ def handle_transcribe_cover(audio_file: Any, melody_only: bool) -> tuple[str, st
         return "", "auto", "⚠️ Upload file audio terlebih dahulu untuk membuat Cover."
     try:
         path = audio_file.name if hasattr(audio_file, "name") else str(audio_file)
-        abc = transcribe_audio_to_abc(path, melody_only=melody_only, models_dir=MODELS_DIR / "trainer")
+        abc = transcribe_audio_to_abc(path, melody_only=melody_only, models_dir=MODELS_DIR)
         mode = "melody" if melody_only else "auto"
         return abc, mode, "✅ Melodi berhasil ditranskripsi ke ABC Score! Sesuaikan Style/Lyrics lalu klik Generate Song."
     except Exception as exc:
@@ -433,8 +433,8 @@ def build_ui() -> gr.Blocks:
                             train_alpha = gr.Slider(16, 256, value=32, step=16, label="Alpha")
                         with gr.Row():
                             train_lr = gr.Number(value=1e-4, label="Learning Rate")
-                            train_steps = gr.Number(value=100, precision=0, label="Max Updates / Steps")
-                            train_save_every = gr.Number(value=10, precision=0, label="Save Every")
+                            train_steps = gr.Number(value=400, precision=0, label="Max Updates / Steps (400-800 disarankan)")
+                            train_save_every = gr.Number(value=50, precision=0, label="Save Every")
                         btn_start_train = gr.Button("🔥 Start LoRA Training", variant="primary")
                         train_logs = gr.Textbox(label="Live Training Logs", lines=12, max_lines=20)
 

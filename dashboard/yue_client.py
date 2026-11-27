@@ -151,12 +151,17 @@ def build_synth_payload(
     if (semantic_tokens or "").strip():
         payload["semantic_tokens"] = semantic_tokens.strip()
     if adapters:
-        payload["adapters"] = adapters
+        payload["lm_adapter"] = [
+            {"path": str(a["path"]), "scale": float(a.get("scale", a.get("weight", 1.0)))}
+            for a in adapters
+        ]
+    else:
+        payload["lm_adapter"] = None
     return payload
 
 
 class YueServerClient:
-    """Thin wrapper around yue2.cpp yue-server REST API."""
+    """Thin wrapper around HOT-Step-CPP ace-server (/yue2/*) REST API."""
 
     def __init__(self, base_url: str | None = None, timeout: float = 15.0) -> None:
         self.base_url = (base_url or os.environ.get("YUE_SERVER_URL", "http://127.0.0.1:8087")).rstrip("/")
@@ -175,12 +180,12 @@ class YueServerClient:
             return False
 
     def get_props(self) -> dict[str, Any]:
-        resp = requests.get(f"{self.base_url}/props", timeout=self.timeout)
+        resp = requests.get(f"{self.base_url}/yue2/props", timeout=self.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def submit_synth(self, payload: dict[str, Any]) -> str:
-        resp = requests.post(f"{self.base_url}/synth", json=payload, timeout=self.timeout)
+        resp = requests.post(f"{self.base_url}/yue2/synth", json=payload, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
         return str(data["id"])
