@@ -92,8 +92,40 @@ def _resolve_trainer_bin(cfg: LoraTrainConfig) -> str:
     return cfg.trainer_bin or os.environ.get("ACE_TRAIN_BIN", default_bin)
 
 
+def _ensure_ace_train_model_links(cfg: LoraTrainConfig) -> tuple[str, str, str]:
+    """Ensure lowercase yue2-vae-*.gguf / yue2-lm-*.gguf symlinks exist for ace-train."""
+    models_dir = ""
+    vae_path = cfg.vae_model
+    lm_path = cfg.base_model
+
+    if vae_path and Path(vae_path).exists():
+        p = Path(vae_path)
+        models_dir = str(p.parent)
+        alias = p.parent / "yue2-vae-f32.gguf"
+        if not alias.exists():
+            try:
+                alias.symlink_to(p.name)
+            except OSError:
+                shutil.copy2(p, alias)
+        vae_path = str(alias)
+
+    if lm_path and Path(lm_path).exists():
+        p = Path(lm_path)
+        models_dir = models_dir or str(p.parent)
+        alias = p.parent / f"yue2-lm-{p.stem.lower()}.gguf"
+        if not alias.exists():
+            try:
+                alias.symlink_to(p.name)
+            except OSError:
+                shutil.copy2(p, alias)
+        lm_path = str(alias)
+
+    return models_dir, vae_path, lm_path
+
+
 def build_preprocess_command(cfg: LoraTrainConfig, cache_dir: str | Path) -> list[str]:
     """Build the ace-train yue2-preprocess CLI command."""
+    models_dir, vae_path, _ = _ensure_ace_train_model_links(cfg)
     cmd = [
         _resolve_trainer_bin(cfg),
         "yue2-preprocess",
@@ -102,14 +134,17 @@ def build_preprocess_command(cfg: LoraTrainConfig, cache_dir: str | Path) -> lis
         "--caption-mode", "yue2",
         "--ffmpeg", "ffmpeg",
     ]
-    if cfg.vae_model:
-        cmd.extend(["--vae", cfg.vae_model])
+    if models_dir:
+        cmd.extend(["--models", models_dir])
+    if vae_path:
+        cmd.extend(["--vae", vae_path])
     return cmd
 
 
 def build_train_command(cfg: LoraTrainConfig, manifest_path: str | Path | None = None) -> list[str]:
     """Build the ace-train yue2-nar-train CLI command for YuE2 LoRA training."""
     binary = _resolve_trainer_bin(cfg)
+    models_dir, _, lm_path = _ensure_ace_train_model_links(cfg)
     out_path = Path(cfg.output_dir) / cfg.adapter_name
     manifest = str(manifest_path or (out_path / "cache" / "yue2_preprocess.json"))
     cmd = [
@@ -125,8 +160,10 @@ def build_train_command(cfg: LoraTrainConfig, manifest_path: str | Path | None =
         "--steps", str(cfg.max_updates),
         "--save-every", str(cfg.save_every),
     ]
-    if cfg.base_model:
-        cmd.extend(["--lm", cfg.base_model])
+    if models_dir:
+        cmd.extend(["--models", models_dir])
+    if lm_path:
+        cmd.extend(["--lm", lm_path])
     return cmd
 
 
