@@ -205,10 +205,18 @@ class YueServerClient:
             timeout=max(self.timeout, 120.0),
         )
         resp.raise_for_status()
-        replay_json, audio_bytes, audio_ext = parse_multipart_mixed(
-            resp.headers.get("Content-Type", ""),
-            resp.content,
-        )
+        ctype = resp.headers.get("Content-Type", "").lower()
+        if "multipart/" in ctype:
+            replay_json, audio_bytes, audio_ext = parse_multipart_mixed(ctype, resp.content)
+        else:
+            replay_json = {}
+            audio_bytes = resp.content
+            if "wav" in ctype:
+                audio_ext = "wav"
+            elif "flac" in ctype:
+                audio_ext = "flac"
+            else:
+                audio_ext = "mp3"
         return SynthResult(
             job_id=job_id,
             audio_bytes=audio_bytes,

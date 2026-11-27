@@ -74,6 +74,18 @@ class TestYueClient(unittest.TestCase):
             found = list_adapters(p)
             self.assertEqual(found, ["rock.gguf", "sub/vocal.safetensors"])
 
+    def test_fetch_result_raw_audio_wav(self) -> None:
+        from unittest.mock import MagicMock, patch
+        from dashboard.yue_client import YueServerClient
+
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Content-Type": "audio/wav"}
+        mock_resp.content = b"RIFF_WAV_DATA"
+        with patch("dashboard.yue_client.requests.get", return_value=mock_resp):
+            res = YueServerClient("http://127.0.0.1:8087").fetch_result("job1")
+        self.assertEqual(res.audio_ext, "wav")
+        self.assertEqual(res.audio_bytes, b"RIFF_WAV_DATA")
+
 
 class TestTrainer(unittest.TestCase):
     def test_prepare_dataset_manifest_and_register(self) -> None:
