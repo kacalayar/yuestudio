@@ -434,6 +434,8 @@ def build_ui() -> gr.Blocks:
             outputs=[audio_out, abc_in, semantic_in, gen_status, lib_table],
         )
 
+        demo.load(get_server_banner, outputs=banner)
+
     return demo
 
 
