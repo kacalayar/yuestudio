@@ -98,56 +98,48 @@ def build_synth_payload(
     lyrics: str,
     *,
     abc: str = "",
-    cot: str = "auto",
+    cot: str = "off",
     steps: int = 32,
-    cfg_scale: float = -1.0,
+    cfg_scale: float = 0.0,
     seed: int = -1,
-    output_format: str = "mp3",
+    output_format: str = "wav",
     mp3_bitrate: int = 192,
     semantic_tokens: str = "",
-    temperature: float = 1.0,
-    top_p: float = 0.95,
-    top_k: int = 100,
-    repetition_penalty: float = 1.2,
-    abc_temperature: float = 0.7,
+    temperature: float = -1.0,
+    top_p: float = -1.0,
+    top_k: int = -1,
+    repetition_penalty: float = -1.0,
+    abc_temperature: float = -1.0,
     adapters: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build a Yue2Request JSON payload compatible with yue2.cpp yue-server."""
+    """Build a Yue2Request JSON payload compatible with HOT-Step-CPP ace-server."""
     if not (style or "").strip() and not (lyrics or "").strip() and not (semantic_tokens or "").strip():
         raise ValueError("Style atau lyrics tidak boleh kosong semua / Style or lyrics cannot both be empty.")
 
     payload: dict[str, Any] = {
-        "style": style.strip(),
-        "lyrics": lyrics.strip(),
-        "steps": max(1, int(steps)),
-        "cfg_scale": float(cfg_scale),
-        "output_format": output_format,
-        "mp3_bitrate": int(mp3_bitrate),
-        "abc_sampling": {
-            "temperature": float(abc_temperature),
-            "top_p": 0.9,
-            "top_k": 30,
-            "repetition_penalty": 1.005,
-            "penalty_window": 100,
-            "min_tokens": 32,
-            "max_tokens": 4096,
-        },
-        "semantic_sampling": {
-            "temperature": float(temperature),
-            "top_p": float(top_p),
-            "top_k": int(top_k),
-            "repetition_penalty": float(repetition_penalty),
-            "penalty_window": 50,
-            "min_tokens": 200,
-            "max_tokens": 9000,
-        },
+        "style": (style or "").strip(),
+        "lyrics": (lyrics or "").strip(),
+        "ode_steps": max(1, int(steps)),
     }
+    if cfg_scale > 0:
+        payload["cfg_scale"] = float(cfg_scale)
+    if temperature > 0:
+        payload["semantic_temperature"] = float(temperature)
+    if top_p > 0:
+        payload["semantic_top_p"] = float(top_p)
+    if top_k > 0:
+        payload["semantic_top_k"] = int(top_k)
+    if repetition_penalty > 0:
+        payload["semantic_repetition_penalty"] = float(repetition_penalty)
+    if abc_temperature > 0:
+        payload["plan_temperature"] = float(abc_temperature)
     if seed >= 0:
         payload["seed"] = int(seed)
     if cot and cot != "auto":
         payload["cot"] = cot
     if (abc or "").strip():
         payload["abc"] = abc.strip()
+        payload["cot"] = "melody" if cot == "melody" else "full"
     if (semantic_tokens or "").strip():
         payload["semantic_tokens"] = semantic_tokens.strip()
     if adapters:

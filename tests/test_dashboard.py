@@ -56,8 +56,9 @@ class TestYueClient(unittest.TestCase):
             adapters=[{"path": "/content/adapters/my.gguf", "weight": 0.8}],
         )
         self.assertEqual(payload["style"], "indie rock")
-        self.assertEqual(payload["steps"], 24)
+        self.assertEqual(payload["ode_steps"], 24)
         self.assertEqual(payload["seed"], 1234)
+        self.assertNotIn("cfg_scale", payload)
         self.assertEqual(payload["lm_adapter"][0]["scale"], 0.8)
 
     def test_build_synth_payload_rejects_empty(self) -> None:

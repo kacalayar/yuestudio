@@ -346,7 +346,7 @@ def build_ui() -> gr.Blocks:
                             cover_status = gr.Markdown("")
 
                         with gr.Accordion("🎼 ABC Score & Replay Tokens (Opsional / Optional)", open=False):
-                            cot_mode = gr.Radio(["auto", "melody", "off"], value="auto", label="Score Mode (CoT)")
+                            cot_mode = gr.Radio(["off", "full", "melody"], value="off", label="Score Mode (CoT — gunakan 'off' untuk LoRA NAR)")
                             abc_in = gr.Textbox(label="ABC Score (diisi otomatis atau edit manual)", lines=5)
                             semantic_in = gr.Textbox(label="Semantic Tokens (untuk Exact Replay / Re-render cepat)", lines=2)
 
@@ -365,16 +365,16 @@ def build_ui() -> gr.Blocks:
                             lora_3_w = gr.Slider(-10.0, 10.0, value=1.0, step=0.1, label="Weight 3", scale=1)
 
                         with gr.Accordion("⚙️ Engine Settings", open=False):
-                            steps_in = gr.Slider(4, 100, value=32, step=1, label="Flow-Matching Steps")
-                            cfg_in = gr.Slider(-1.0, 10.0, value=-1.0, step=0.5, label="CFG Scale (-1 = auto)")
+                            steps_in = gr.Slider(4, 100, value=32, step=1, label="Flow-Matching Steps (ode_steps)")
+                            cfg_in = gr.Slider(0.0, 10.0, value=0.0, step=0.5, label="CFG Scale (0 = default model)")
                             seed_in = gr.Number(value=-1, precision=0, label="Seed (-1 = random)")
                             fmt_in = gr.Dropdown(["mp3", "wav16", "wav24", "wav32"], value="mp3", label="Output Format")
                             bitrate_in = gr.Dropdown([128, 192, 256, 320], value=192, label="MP3 Bitrate (kbps)")
-                            temp_in = gr.Slider(0.1, 2.0, value=1.0, step=0.05, label="Semantic Temperature")
-                            top_p_in = gr.Slider(0.1, 1.0, value=0.95, step=0.05, label="Top-P")
-                            top_k_in = gr.Slider(1, 200, value=100, step=1, label="Top-K")
-                            rep_in = gr.Slider(1.0, 2.0, value=1.2, step=0.05, label="Repetition Penalty")
-                            abc_temp_in = gr.Slider(0.1, 1.5, value=0.7, step=0.05, label="ABC Score Temperature")
+                            temp_in = gr.Slider(0.0, 2.0, value=0.0, step=0.05, label="Semantic Temperature (0 = default GGUF)")
+                            top_p_in = gr.Slider(0.0, 1.0, value=0.0, step=0.05, label="Top-P (0 = default GGUF)")
+                            top_k_in = gr.Slider(0, 200, value=0, step=1, label="Top-K (0 = default GGUF)")
+                            rep_in = gr.Slider(0.0, 2.0, value=0.0, step=0.05, label="Repetition Penalty (0 = default GGUF)")
+                            abc_temp_in = gr.Slider(0.0, 1.5, value=0.0, step=0.05, label="ABC Score Temperature (0 = default GGUF)")
 
                         btn_generate = gr.Button("🚀 Generate Song / Buat Lagu", variant="primary", size="lg")
                         gen_status = gr.Markdown("")
