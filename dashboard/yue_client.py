@@ -146,9 +146,9 @@ def build_synth_payload(
         payload["seed"] = int(seed)
     if cot and cot != "auto":
         payload["cot"] = cot
-    if abc.strip():
+    if (abc or "").strip():
         payload["abc"] = abc.strip()
-    if semantic_tokens.strip():
+    if (semantic_tokens or "").strip():
         payload["semantic_tokens"] = semantic_tokens.strip()
     if adapters:
         payload["adapters"] = adapters

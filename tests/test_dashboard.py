@@ -49,6 +49,8 @@ class TestYueClient(unittest.TestCase):
         payload = build_synth_payload(
             style="indie rock",
             lyrics="[verse]\nhello world",
+            abc=None,  # type: ignore[arg-type]
+            semantic_tokens=None,  # type: ignore[arg-type]
             steps=24,
             seed=1234,
             adapters=[{"path": "/content/adapters/my.gguf", "weight": 0.8}],
@@ -95,6 +97,8 @@ class TestTrainer(unittest.TestCase):
             dest = register_trained_adapter(ckpt, adapters_dir, alias="my_custom")
             self.assertTrue(dest.exists())
             self.assertEqual(dest.name, "my_custom.gguf")
+            with self.assertRaises(ValueError):
+                register_trained_adapter("", adapters_dir)
 
     def test_build_train_command(self) -> None:
         cfg = LoraTrainConfig(

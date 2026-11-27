@@ -245,8 +245,11 @@ def handle_start_training(
 
 
 def handle_register_lora(checkpoint_path: str, alias: str) -> str:
-    dest = register_trained_adapter(checkpoint_path.strip(), ADAPTERS_DIR, alias=alias.strip() or None)
-    return f"✅ LoRA terdaftar di `{dest}`! Klik 🔄 Refresh Adapters di tab Create untuk menggunakannya."
+    try:
+        dest = register_trained_adapter((checkpoint_path or "").strip(), ADAPTERS_DIR, alias=(alias or "").strip() or None)
+        return f"✅ LoRA terdaftar di `{dest}`! Klik 🔄 Refresh Adapters di tab Create untuk menggunakannya."
+    except Exception as exc:
+        return f"⚠️ Gagal mendaftarkan LoRA: {exc}"
 
 
 def handle_download_hf_lora(repo_id: str, filename: str) -> str:

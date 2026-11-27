@@ -290,9 +290,12 @@ def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
 
 def register_trained_adapter(source_file: str | Path, adapters_dir: str | Path, alias: str | None = None) -> Path:
     """Copy a trained checkpoint into yue-server's ./adapters directory."""
-    src = Path(source_file)
-    if not src.exists():
-        raise FileNotFoundError(f"Checkpoint tidak ditemukan: {src}")
+    raw = str(source_file or "").strip()
+    if not raw:
+        raise ValueError("Path checkpoint tidak boleh kosong / Checkpoint path cannot be empty.")
+    src = Path(raw)
+    if not src.is_file():
+        raise FileNotFoundError(f"File checkpoint tidak ditemukan: {src}")
     dest_dir = Path(adapters_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     target_name = f"{alias}{src.suffix}" if alias else src.name
