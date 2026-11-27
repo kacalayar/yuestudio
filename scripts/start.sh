@@ -35,7 +35,6 @@ echo "Starting yue-server on port 8087..."
     --port 8087 \
     --model "$MODELS_DIR/YuE2-3B-$QUANT.gguf" \
     --vae "$MODELS_DIR/YuE2-Vae-F32.gguf" \
-    --adapters "$ADAPTERS_DIR" \
     > "$YUE_WORKSPACE/yue-server.log" 2>&1 &
 
 SERVER_PID=$!
