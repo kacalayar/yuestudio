@@ -11,11 +11,13 @@ Dashboard Web **Gradio** (Bilingual ID/EN) + **LoRA Training Studio** untuk menj
 
 ## Cara Menjalankan di Masing-Masing Platform
 
-### 1. Google Colab (GPU T4 16 GB)
-1. Upload folder `yuestudio/` ke Google Drive di `MyDrive/YuE2-Studio/yuestudio/`.
-2. Buka [YuE2_Colab_Studio.ipynb](YuE2_Colab_Studio.ipynb) di Google Colab, pilih **Runtime → Change runtime type → T4 GPU**.
-3. Jalankan **Sel 1 s/d Sel 5** (sesi pertama compile CUDA ~5–10 menit dan otomatis di-cache ke Google Drive).
-4. Buka link publik `https://xxxx.gradio.live`. *(Opsional: Sel 6 membuka WebUI bawaan `yue2.cpp` via `cloudflared`)*
+### 1. Google Colab (GPU T4 16 GB) — Langsung dari GitHub
+1. Push folder `yuestudio/` ke repository GitHub kamu (misalnya `https://github.com/kacalayar/yuestudio`).
+2. Buka notebook langsung di Colab lewat URL:
+   `https://colab.research.google.com/github/kacalayar/yuestudio/blob/main/YuE2_Colab_Studio.ipynb`
+3. Pilih **Runtime → Change runtime type → T4 GPU**.
+4. Di **Sel 5**, isi `GITHUB_REPO` dengan URL repo GitHub kamu (`https://github.com/kacalayar/yuestudio.git`) — tidak perlu upload kode ke Google Drive! *(Opsi Google Drive di Sel 1 hanya untuk cache binary/model agar sesi berikutnya lebih cepat, bisa dimatikan jika tidak dibutuhkan).*
+5. Jalankan **Sel 1 s/d Sel 5**, lalu buka link publik `https://xxxx.gradio.live`. *(Opsional: Sel 6 membuka WebUI bawaan `yue2.cpp` via `cloudflared`)*
 
 ### 2. Kaggle (GPU T4 x2 / P100)
 1. Upload folder `yuestudio/` sebagai **Kaggle Dataset** bernama `yuestudio` (atau upload langsung ke `/kaggle/working/yuestudio`).
