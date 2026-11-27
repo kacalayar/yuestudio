@@ -153,6 +153,7 @@ def build_train_command(cfg: LoraTrainConfig, manifest_path: str | Path | None =
         "--lr", str(cfg.learning_rate),
         "--steps", str(cfg.max_updates),
         "--save-every", str(cfg.save_every),
+        "--kv-cache", "2",
         "--models", str(t_dir),
         "--lm", str(t_dir / "yue2-lm-q8_0.gguf"),
     ]
@@ -174,6 +175,38 @@ def _run_and_stream(cmd: list[str], env: dict[str, str]) -> Iterator[tuple[str, 
     yield "", proc.wait()
 
 
+def _pause_yue_server() -> bool:
+    """Stop yue-server temporarily to free GPU VRAM for training."""
+    try:
+        res = subprocess.run(["pgrep", "-f", "yue-server"], capture_output=True, text=True)
+        if res.returncode == 0 and res.stdout.strip():
+            subprocess.run(["pkill", "-f", "yue-server"], check=False)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _restart_yue_server(bin_dir: Path) -> bool:
+    """Restart yue-server in the background if model env vars are available."""
+    model_file = os.environ.get("YUE_MODEL_FILE", "")
+    vae_file = os.environ.get("YUE_VAE_FILE", "")
+    server_bin = os.environ.get("YUE_SERVER_BIN", str(bin_dir / "yue-server"))
+    if not (model_file and vae_file and Path(server_bin).exists()):
+        return False
+    env = os.environ.copy()
+    env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else str(bin_dir)
+    log_path = default_workspace_root() / "yue-server.log"
+    log_f = open(log_path, "a")
+    subprocess.Popen(
+        [server_bin, "--host", "0.0.0.0", "--port", "8087", "--model", model_file, "--vae", vae_file],
+        stdout=log_f,
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
+    return True
+
+
 def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
     """Run yue2-preprocess (+ optional yue2-tokenize) + yue2-nar-train and yield live logs."""
     binary = Path(_resolve_trainer_bin(cfg))
@@ -193,53 +226,66 @@ def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
     bin_dir = str(binary.parent)
     env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else bin_dir
 
-    # Stage 0: Ensure scragnog/YuE2-GGUF trainer models exist
-    for msg in _ensure_trainer_models(cfg):
-        yield msg
+    paused_server = _pause_yue_server()
+    if paused_server:
+        yield "⏸️ Menghentikan sementara yue-server untuk membebaskan VRAM GPU...\n"
+        import time
+        time.sleep(2)
 
-    # Stage 1: yue2-preprocess
-    yield "=== [1/2] Menjalankan yue2-preprocess (VAE latents & manifest) ===\n"
-    prep_cmd = build_preprocess_command(cfg, cache_dir)
-    rc = 0
-    for line, code in _run_and_stream(prep_cmd, env):
-        if line:
-            yield line
-        if code is not None:
-            rc = code
-    if rc != 0:
-        yield f"\n[EXIT] yue2-preprocess gagal dengan kode: {rc}\n"
-        return
+    try:
+        # Stage 0: Ensure scragnog/YuE2-GGUF trainer models exist
+        for msg in _ensure_trainer_models(cfg):
+            yield msg
 
-    manifest_path = cache_dir / "yue2_preprocess.json"
-
-    # Stage 1b: yue2-tokenize
-    tok_file = _trainer_models_dir(cfg) / "yue2-tok-f16.gguf"
-    if tok_file.exists():
-        yield "\n=== [1b] Menjalankan yue2-tokenize ===\n"
-        tok_cmd = [
-            str(binary),
-            "yue2-tokenize",
-            "--manifest", str(manifest_path),
-            "--tok", str(tok_file),
-            "--ffmpeg", "ffmpeg",
-        ]
-        for line, code in _run_and_stream(tok_cmd, env):
+        # Stage 1: yue2-preprocess
+        yield "=== [1/2] Menjalankan yue2-preprocess (VAE latents & manifest) ===\n"
+        prep_cmd = build_preprocess_command(cfg, cache_dir)
+        rc = 0
+        for line, code in _run_and_stream(prep_cmd, env):
             if line:
                 yield line
-            if code is not None and code != 0:
-                yield f"\n[WARN] yue2-tokenize exit {code}, lanjut training text-only...\n"
+            if code is not None:
+                rc = code
+        if rc != 0:
+            yield f"\n[EXIT] yue2-preprocess gagal dengan kode: {rc}\n"
+            return
 
-    # Stage 2: yue2-nar-train
-    yield "\n=== [2/2] Menjalankan yue2-nar-train (YuE2 LoRA training) ===\n"
-    train_cmd = build_train_command(cfg, manifest_path)
-    for line, code in _run_and_stream(train_cmd, env):
-        if line:
-            yield line
-        if code is not None:
-            rc = code
-    yield f"\n[EXIT] Training selesai dengan kode: {rc}\n"
-    if rc == 0:
-        yield f"✅ Adapter tersimpan di: {out_dir / (cfg.adapter_name + '.safetensors')}\n"
+        manifest_path = cache_dir / "yue2_preprocess.json"
+
+        # Stage 1b: yue2-tokenize
+        tok_file = _trainer_models_dir(cfg) / "yue2-tok-f16.gguf"
+        if tok_file.exists():
+            yield "\n=== [1b] Menjalankan yue2-tokenize ===\n"
+            tok_cmd = [
+                str(binary),
+                "yue2-tokenize",
+                "--manifest", str(manifest_path),
+                "--tok", str(tok_file),
+                "--ffmpeg", "ffmpeg",
+            ]
+            for line, code in _run_and_stream(tok_cmd, env):
+                if line:
+                    yield line
+                if code is not None and code != 0:
+                    yield f"\n[WARN] yue2-tokenize exit {code}, lanjut training text-only...\n"
+
+        # Stage 2: yue2-nar-train
+        yield "\n=== [2/2] Menjalankan yue2-nar-train (YuE2 LoRA training) ===\n"
+        train_cmd = build_train_command(cfg, manifest_path)
+        for line, code in _run_and_stream(train_cmd, env):
+            if line:
+                yield line
+            if code is not None:
+                rc = code
+        yield f"\n[EXIT] Training selesai dengan kode: {rc}\n"
+        if rc == 0:
+            yield f"✅ Adapter tersimpan di: {out_dir / (cfg.adapter_name + '.safetensors')}\n"
+    finally:
+        if paused_server:
+            if _restart_yue_server(binary.parent):
+                yield "\n▶️ yue-server dijalankan kembali di background.\n"
+            else:
+                yield "\n⚠️ Training selesai. Jalankan ulang Sel 5 / yue-server untuk generate lagu.\n"
 
 
 def register_trained_adapter(source_file: str | Path, adapters_dir: str | Path, alias: str | None = None) -> Path:

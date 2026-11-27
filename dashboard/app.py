@@ -380,8 +380,8 @@ def build_ui() -> gr.Blocks:
                             train_preset = gr.Dropdown(["Fast", "Balanced", "Thorough"], value="Fast", label="Preset")
                             train_type = gr.Dropdown(["lokr", "lora"], value="lokr", label="Adapter Type")
                         with gr.Row():
-                            train_rank = gr.Slider(16, 256, value=128, step=16, label="Rank (Dim)")
-                            train_alpha = gr.Slider(16, 256, value=128, step=16, label="Alpha")
+                            train_rank = gr.Slider(16, 256, value=32, step=16, label="Rank (Dim)")
+                            train_alpha = gr.Slider(16, 256, value=32, step=16, label="Alpha")
                         with gr.Row():
                             train_lr = gr.Number(value=1e-4, label="Learning Rate")
                             train_steps = gr.Number(value=100, precision=0, label="Max Updates / Steps")

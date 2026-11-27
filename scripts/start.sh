@@ -26,6 +26,9 @@ for fname in ["YuE2-3B-$QUANT.gguf", "YuE2-Vae-F32.gguf"]:
 PY
 
 export ACE_TRAIN_BIN="${ACE_TRAIN_BIN:-$BIN_DIR/ace-train}"
+export YUE_SERVER_BIN="$BIN_DIR/yue-server"
+export YUE_MODEL_FILE="$MODELS_DIR/YuE2-3B-$QUANT.gguf"
+export YUE_VAE_FILE="$MODELS_DIR/YuE2-Vae-F32.gguf"
 export YUE_SERVER_URL="${YUE_SERVER_URL:-http://127.0.0.1:8087}"
 export LD_LIBRARY_PATH="$BIN_DIR:${LD_LIBRARY_PATH:-}"
 
