@@ -210,6 +210,16 @@ def handle_prepare_dataset(dataset_path: str, trigger_word: str, genre: str, lan
     return f"✅ Dataset siap! {count} track diproses -> `{manifest}`"
 
 
+def list_trained_checkpoints() -> list[str]:
+    if not LORA_OUT_DIR.exists():
+        return []
+    return [
+        str(p)
+        for p in sorted(LORA_OUT_DIR.rglob("*"), reverse=True)
+        if p.is_file() and p.suffix.lower() in {".safetensors", ".gguf"}
+    ]
+
+
 def handle_start_training(
     dataset_path: str,
     adapter_name: str,
@@ -222,11 +232,12 @@ def handle_start_training(
     save_every: int,
     preset: str,
 ):
+    name = (adapter_name or "").strip() or "my_yue2_lora"
     cfg = LoraTrainConfig(
-        dataset_dir=dataset_path.strip(),
+        dataset_dir=(dataset_path or "").strip(),
         output_dir=str(LORA_OUT_DIR),
-        adapter_name=adapter_name.strip() or "my_yue2_lora",
-        trigger_word=trigger_word.strip() or "custom_style",
+        adapter_name=name,
+        trigger_word=(trigger_word or "").strip() or "custom_style",
         adapter_type=adapter_type,
         rank=int(rank),
         alpha=int(alpha),
@@ -241,6 +252,12 @@ def handle_start_training(
     buf = ""
     for chunk in stream_training(cfg):
         buf += chunk
+        yield buf
+
+    final_ckpt = LORA_OUT_DIR / name / f"{name}.safetensors"
+    if final_ckpt.is_file():
+        dest = register_trained_adapter(final_ckpt, ADAPTERS_DIR, alias=name)
+        buf += f"\n🎉 Otomatis didaftarkan ke LoRA Mixer: `{dest}` (klik 🔄 Refresh Adapters di tab Create)\n"
         yield buf
 
 
@@ -393,10 +410,18 @@ def build_ui() -> gr.Blocks:
                         train_logs = gr.Textbox(label="Live Training Logs", lines=12, max_lines=20)
 
                 with gr.Row():
-                    ckpt_path_in = gr.Textbox(label="Path Checkpoint Hasil Training (.gguf/.safetensors)", placeholder=str(LORA_OUT_DIR / "my_artist_lokr/checkpoint-final.gguf"))
-                    ckpt_alias_in = gr.Textbox(label="Nama Alias di Tab Create", value="my_artist_lokr")
-                    btn_reg_lora = gr.Button("➕ Daftarkan ke Create Tab")
+                    ckpt_path_in = gr.Dropdown(
+                        choices=list_trained_checkpoints(),
+                        allow_custom_value=True,
+                        label="Pilih / Isi Path Checkpoint (.safetensors / .gguf)",
+                        scale=3,
+                    )
+                    btn_scan_ckpts = gr.Button("🔄 Scan Checkpoints", scale=1)
+                    ckpt_alias_in = gr.Textbox(label="Nama Alias di Tab Create", value="my_artist_lokr", scale=2)
+                    btn_reg_lora = gr.Button("➕ Daftarkan ke Create Tab", scale=1)
                 reg_status = gr.Markdown("")
+
+                btn_scan_ckpts.click(lambda: gr.update(choices=list_trained_checkpoints()), outputs=ckpt_path_in)
 
                 btn_upload_ds.click(handle_upload_to_dataset, inputs=[ds_files, ds_name], outputs=ds_status)
                 btn_prep_ds.click(handle_prepare_dataset, inputs=[ds_path_in, trigger_in, ds_genre_in, ds_lang_in], outputs=ds_status)
