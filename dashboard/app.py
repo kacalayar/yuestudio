@@ -500,7 +500,12 @@ def main() -> None:
     share = default_gradio_share(PLATFORM)
     port = int(os.environ.get("GRADIO_PORT", os.environ.get("PORT", "7860")))
     demo = build_ui()
-    launch_kwargs: dict[str, Any] = {"server_name": "0.0.0.0", "server_port": port, "share": share}
+    launch_kwargs: dict[str, Any] = {
+        "server_name": "0.0.0.0",
+        "server_port": port,
+        "share": share,
+        "allowed_paths": [str(BASE_DIR), str(LIBRARY_DIR)],
+    }
     if "theme" in inspect.signature(demo.launch).parameters:
         launch_kwargs["theme"] = gr.themes.Soft(primary_hue="pink", neutral_hue="zinc")
     demo.queue().launch(**launch_kwargs)
