@@ -87,17 +87,38 @@ def prepare_dataset_manifest(
     return manifest_path, len(entries)
 
 
-def build_train_command(cfg: LoraTrainConfig) -> list[str]:
-    """Build the ace-train CLI command for YuE2 Joint LoRA/LoKr training."""
+def _resolve_trainer_bin(cfg: LoraTrainConfig) -> str:
     default_bin = str(default_workspace_root() / "bin" / "ace-train")
-    binary = cfg.trainer_bin or os.environ.get("ACE_TRAIN_BIN", default_bin)
+    return cfg.trainer_bin or os.environ.get("ACE_TRAIN_BIN", default_bin)
+
+
+def build_preprocess_command(cfg: LoraTrainConfig, cache_dir: str | Path) -> list[str]:
+    """Build the ace-train yue2-preprocess CLI command."""
+    cmd = [
+        _resolve_trainer_bin(cfg),
+        "yue2-preprocess",
+        "--audio", str(cfg.dataset_dir),
+        "--out", str(cache_dir),
+        "--caption-mode", "yue2",
+        "--ffmpeg", "ffmpeg",
+    ]
+    if cfg.vae_model:
+        cmd.extend(["--vae", cfg.vae_model])
+    return cmd
+
+
+def build_train_command(cfg: LoraTrainConfig, manifest_path: str | Path | None = None) -> list[str]:
+    """Build the ace-train yue2-nar-train CLI command for YuE2 LoRA training."""
+    binary = _resolve_trainer_bin(cfg)
     out_path = Path(cfg.output_dir) / cfg.adapter_name
+    manifest = str(manifest_path or (out_path / "cache" / "yue2_preprocess.json"))
     cmd = [
         binary,
-        "--backend", "yue2",
-        "--dataset", str(cfg.dataset_dir),
+        "yue2-nar-train",
+        "--manifest", manifest,
         "--out", str(out_path),
-        "--adapter-type", cfg.adapter_type,
+        "--trigger", cfg.trigger_word,
+        "--name", cfg.adapter_name,
         "--rank", str(cfg.rank),
         "--alpha", str(cfg.alpha),
         "--lr", str(cfg.learning_rate),
@@ -105,33 +126,12 @@ def build_train_command(cfg: LoraTrainConfig) -> list[str]:
         "--save-every", str(cfg.save_every),
     ]
     if cfg.base_model:
-        cmd.extend(["--model", cfg.base_model])
-    if cfg.vae_model:
-        cmd.extend(["--vae", cfg.vae_model])
-    if cfg.tokenizer_model:
-        cmd.extend(["--tokenizer", cfg.tokenizer_model])
+        cmd.extend(["--lm", cfg.base_model])
     return cmd
 
 
-def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
-    """Run ace-train as a subprocess and yield live log lines."""
-    cmd = build_train_command(cfg)
-    binary = Path(cmd[0])
-    if not binary.exists():
-        yield (
-            f"[ERROR] Trainer binary tidak ditemukan di: {binary}\n"
-            "Pastikan Sel 3 (Build HOT-Step-CPP / ace-train) sudah dijalankan di Google Colab.\n"
-            f"Perintah yang akan dijalankan: {' '.join(cmd)}"
-        )
-        return
-
-    Path(cfg.output_dir, cfg.adapter_name).mkdir(parents=True, exist_ok=True)
-    yield f"[CMD] {' '.join(cmd)}\n"
-
-    env = os.environ.copy()
-    bin_dir = str(binary.parent)
-    env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else bin_dir
-
+def _run_and_stream(cmd: list[str], env: dict[str, str]) -> Iterator[tuple[str, int | None]]:
+    yield f"[CMD] {' '.join(cmd)}\n", None
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
@@ -142,9 +142,71 @@ def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
     )
     assert proc.stdout is not None
     for line in proc.stdout:
-        yield line
-    code = proc.wait()
-    yield f"\n[EXIT] Training selesai dengan kode: {code}\n"
+        yield line, None
+    yield "", proc.wait()
+
+
+def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
+    """Run yue2-preprocess (+ optional yue2-tokenize) + yue2-nar-train and yield live logs."""
+    binary = Path(_resolve_trainer_bin(cfg))
+    if not binary.exists():
+        yield (
+            f"[ERROR] Trainer binary tidak ditemukan di: {binary}\n"
+            "Pastikan Sel 3 (Build HOT-Step-CPP / ace-train) sudah dijalankan.\n"
+        )
+        return
+
+    out_dir = Path(cfg.output_dir) / cfg.adapter_name
+    cache_dir = out_dir / "cache"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    bin_dir = str(binary.parent)
+    env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else bin_dir
+
+    # Stage 1: yue2-preprocess
+    yield "=== [1/2] Menjalankan yue2-preprocess (VAE latents & manifest) ===\n"
+    prep_cmd = build_preprocess_command(cfg, cache_dir)
+    rc = 0
+    for line, code in _run_and_stream(prep_cmd, env):
+        if line:
+            yield line
+        if code is not None:
+            rc = code
+    if rc != 0:
+        yield f"\n[EXIT] yue2-preprocess gagal dengan kode: {rc}\n"
+        return
+
+    manifest_path = cache_dir / "yue2_preprocess.json"
+
+    # Stage 1b (optional): yue2-tokenize if tokenizer GGUF exists
+    if cfg.tokenizer_model and Path(cfg.tokenizer_model).exists():
+        yield "\n=== [1b] Menjalankan yue2-tokenize ===\n"
+        tok_cmd = [
+            str(binary),
+            "yue2-tokenize",
+            "--manifest", str(manifest_path),
+            "--tok", cfg.tokenizer_model,
+            "--ffmpeg", "ffmpeg",
+        ]
+        for line, code in _run_and_stream(tok_cmd, env):
+            if line:
+                yield line
+            if code is not None and code != 0:
+                yield f"\n[WARN] yue2-tokenize exit {code}, lanjut training text-only...\n"
+
+    # Stage 2: yue2-nar-train
+    yield "\n=== [2/2] Menjalankan yue2-nar-train (YuE2 LoRA training) ===\n"
+    train_cmd = build_train_command(cfg, manifest_path)
+    for line, code in _run_and_stream(train_cmd, env):
+        if line:
+            yield line
+        if code is not None:
+            rc = code
+    yield f"\n[EXIT] Training selesai dengan kode: {rc}\n"
+    if rc == 0:
+        yield f"✅ Adapter tersimpan di: {out_dir / (cfg.adapter_name + '.safetensors')}\n"
 
 
 def register_trained_adapter(source_file: str | Path, adapters_dir: str | Path, alias: str | None = None) -> Path:

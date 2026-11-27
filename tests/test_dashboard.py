@@ -105,8 +105,8 @@ class TestTrainer(unittest.TestCase):
         )
         cmd = build_train_command(cfg)
         self.assertEqual(cmd[0], "/usr/bin/ace-train")
-        self.assertIn("--backend", cmd)
-        self.assertIn("yue2", cmd)
+        self.assertEqual(cmd[1], "yue2-nar-train")
+        self.assertIn("--manifest", cmd)
 
 
 class TestNotebookValidJson(unittest.TestCase):
