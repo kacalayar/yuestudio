@@ -101,7 +101,7 @@ def _ensure_ace_train_model_links(cfg: LoraTrainConfig) -> tuple[str, str, str]:
     if vae_path and Path(vae_path).exists():
         p = Path(vae_path)
         models_dir = str(p.parent)
-        alias = p.parent / "yue2-vae-f32.gguf"
+        alias = p.parent / "yue2-vae-standard-f32.gguf"
         if not alias.exists():
             try:
                 alias.symlink_to(p.name)
