@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# YuE2 runtime workspace (models, binaries, generated audio, datasets, trained LoRAs)
+yue2-workspace/
+*.gguf
+*.safetensors
+*.mp3
+*.wav
+*.flac
+*.log
+
+# Jupyter / Colab
+.ipynb_checkpoints/
+
+# Environment & OS
+.env
+.DS_Store
+Thumbs.db
