@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import shutil
@@ -20,6 +21,7 @@ from .trainer import (
     register_trained_adapter,
     scan_audio_dataset,
     stream_training,
+    transcribe_audio_to_abc,
 )
 from .yue_client import YueServerClient, build_synth_payload, list_adapters
 
@@ -269,6 +271,18 @@ def handle_register_lora(checkpoint_path: str, alias: str) -> str:
         return f"⚠️ Gagal mendaftarkan LoRA: {exc}"
 
 
+def handle_transcribe_cover(audio_file: Any, melody_only: bool) -> tuple[str, str, str]:
+    if not audio_file:
+        return "", "auto", "⚠️ Upload file audio terlebih dahulu untuk membuat Cover."
+    try:
+        path = audio_file.name if hasattr(audio_file, "name") else str(audio_file)
+        abc = transcribe_audio_to_abc(path, melody_only=melody_only, models_dir=MODELS_DIR / "trainer")
+        mode = "melody" if melody_only else "auto"
+        return abc, mode, "✅ Melodi berhasil ditranskripsi ke ABC Score! Sesuaikan Style/Lyrics lalu klik Generate Song."
+    except Exception as exc:
+        return "", "auto", f"⚠️ Gagal transkripsi Cover: {exc}"
+
+
 def handle_download_hf_lora(repo_id: str, filename: str) -> str:
     path = hf_hub_download(repo_id=repo_id.strip(), filename=filename.strip(), local_dir=str(ADAPTERS_DIR))
     return f"✅ LoRA berhasil di-download ke `{path}`"
@@ -287,7 +301,11 @@ def handle_sync_drive() -> str:
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="YuE2-Colab-Studio", theme=gr.themes.Soft(primary_hue="pink", neutral_hue="zinc")) as demo:
+    theme = gr.themes.Soft(primary_hue="pink", neutral_hue="zinc")
+    blocks_kwargs: dict[str, Any] = {"title": "YuE2-Colab-Studio"}
+    if "theme" not in inspect.signature(gr.Blocks.launch).parameters:
+        blocks_kwargs["theme"] = theme
+    with gr.Blocks(**blocks_kwargs) as demo:
         gr.Markdown("# 🎶 YuE2-Colab-Studio\n*Dashboard Generasi Lagu & LoRA Training Studio untuk Google Colab (terinspirasi dari YuE2-Studio)*")
         banner = gr.Markdown(get_server_banner())
 
@@ -312,6 +330,12 @@ def build_ui() -> gr.Blocks:
                             value="[verse]\nWalking down the neon street tonight\nCity lights are shining bright\n\n[chorus]\nWe are singing to the stars above\nSpinning in a melody of love",
                             lines=9,
                         )
+                        with gr.Accordion("🎤 Cover Mode (Audio → ABC Melodi via SheetSage2)", open=False):
+                            cover_audio_in = gr.Audio(label="Upload Lagu Referensi untuk Cover", type="filepath")
+                            cover_melody_only = gr.Checkbox(value=True, label="Melody Only (disarankan untuk Cover)")
+                            btn_transcribe_cover = gr.Button("🎼 Transkripsi Melodi ke ABC Score")
+                            cover_status = gr.Markdown("")
+
                         with gr.Accordion("🎼 ABC Score & Replay Tokens (Opsional / Optional)", open=False):
                             cot_mode = gr.Radio(["auto", "melody", "off"], value="auto", label="Score Mode (CoT)")
                             abc_in = gr.Textbox(label="ABC Score (diisi otomatis atau edit manual)", lines=5)
@@ -352,6 +376,11 @@ def build_ui() -> gr.Blocks:
                 btn_bridge.click(lambda l: append_section_tag(l, "[bridge]"), inputs=lyrics_in, outputs=lyrics_in)
                 btn_outro.click(lambda l: append_section_tag(l, "[outro]"), inputs=lyrics_in, outputs=lyrics_in)
                 btn_refresh_lora.click(refresh_adapter_choices, outputs=[lora_1, lora_2, lora_3])
+                btn_transcribe_cover.click(
+                    handle_transcribe_cover,
+                    inputs=[cover_audio_in, cover_melody_only],
+                    outputs=[abc_in, cot_mode, cover_status],
+                )
 
             # ---------------- TAB 2: LIBRARY & REPLAY ----------------
             with gr.Tab("📚 Library & Replay"):
@@ -471,7 +500,10 @@ def main() -> None:
     share = default_gradio_share(PLATFORM)
     port = int(os.environ.get("GRADIO_PORT", os.environ.get("PORT", "7860")))
     demo = build_ui()
-    demo.queue().launch(server_name="0.0.0.0", server_port=port, share=share)
+    launch_kwargs: dict[str, Any] = {"server_name": "0.0.0.0", "server_port": port, "share": share}
+    if "theme" in inspect.signature(demo.launch).parameters:
+        launch_kwargs["theme"] = gr.themes.Soft(primary_hue="pink", neutral_hue="zinc")
+    demo.queue().launch(**launch_kwargs)
 
 
 if __name__ == "__main__":

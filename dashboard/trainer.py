@@ -302,3 +302,81 @@ def register_trained_adapter(source_file: str | Path, adapters_dir: str | Path, 
     dest = dest_dir / target_name
     shutil.copy2(src, dest)
     return dest
+
+
+def transcribe_audio_to_abc(
+    audio_file: str | Path,
+    *,
+    melody_only: bool = True,
+    trainer_bin: str = "",
+    models_dir: str | Path | None = None,
+) -> str:
+    """Transcribe an audio file into ABC notation using ace-train (SheetSage2) for Cover generation."""
+    from tempfile import TemporaryDirectory
+    from huggingface_hub import hf_hub_download
+
+    src = Path(str(audio_file or "").strip())
+    if not src.is_file():
+        raise FileNotFoundError(f"File audio tidak ditemukan: {src}")
+
+    binary = Path(trainer_bin or os.environ.get("ACE_TRAIN_BIN", str(default_workspace_root() / "bin" / "ace-train")))
+    if not binary.exists():
+        raise FileNotFoundError(f"Binary ace-train tidak ditemukan di {binary}")
+
+    t_dir = Path(models_dir) if models_dir else (default_workspace_root() / "models" / "trainer")
+    t_dir.mkdir(parents=True, exist_ok=True)
+    for fname in ("yue2-vae-standard-f32.gguf", "sheetsage2-f16.gguf"):
+        if not (t_dir / fname).exists():
+            hf_hub_download(repo_id="scragnog/YuE2-GGUF", filename=fname, local_dir=str(t_dir))
+
+    env = os.environ.copy()
+    bin_dir = str(binary.parent)
+    env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else bin_dir
+
+    paused = _pause_yue_server()
+    try:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            audio_dir = tmp_path / "audio"
+            cache_dir = tmp_path / "cache"
+            audio_dir.mkdir()
+            cache_dir.mkdir()
+            shutil.copy2(src, audio_dir / src.name)
+
+            subprocess.run(
+                [
+                    str(binary), "yue2-preprocess",
+                    "--audio", str(audio_dir),
+                    "--out", str(cache_dir),
+                    "--caption-mode", "none",
+                    "--ffmpeg", "ffmpeg",
+                    "--models", str(t_dir),
+                    "--vae", str(t_dir / "yue2-vae-standard-f32.gguf"),
+                ],
+                check=True,
+                env=env,
+            )
+
+            manifest_path = cache_dir / "yue2_preprocess.json"
+            sheet_cmd = [
+                str(binary), "yue2-sheet",
+                "--manifest", str(manifest_path),
+                "--model", str(t_dir / "sheetsage2-f16.gguf"),
+            ]
+            if melody_only:
+                sheet_cmd.append("--melody-only")
+            subprocess.run(sheet_cmd, check=True, env=env)
+
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for key in ("sources", "tracks", "clips"):
+                items = data.get(key)
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict) and item.get("abc"):
+                            return str(item["abc"])
+            if isinstance(data, dict) and data.get("abc"):
+                return str(data["abc"])
+            raise RuntimeError("SheetSage2 gagal menghasilkan ABC score dari audio ini.")
+    finally:
+        if paused:
+            _restart_yue_server(binary.parent)
