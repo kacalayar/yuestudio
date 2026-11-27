@@ -92,62 +92,56 @@ def _resolve_trainer_bin(cfg: LoraTrainConfig) -> str:
     return cfg.trainer_bin or os.environ.get("ACE_TRAIN_BIN", default_bin)
 
 
-def _ensure_ace_train_model_links(cfg: LoraTrainConfig) -> tuple[str, str, str]:
-    """Ensure lowercase yue2-vae-*.gguf / yue2-lm-*.gguf symlinks exist for ace-train."""
-    models_dir = ""
-    vae_path = cfg.vae_model
-    lm_path = cfg.base_model
+def _trainer_models_dir(cfg: LoraTrainConfig) -> Path:
+    if cfg.vae_model:
+        return Path(cfg.vae_model).parent / "trainer"
+    return default_workspace_root() / "models" / "trainer"
 
-    if vae_path and Path(vae_path).exists():
-        p = Path(vae_path)
-        models_dir = str(p.parent)
-        alias = p.parent / "yue2-vae-standard-f32.gguf"
-        if not alias.exists():
-            try:
-                alias.symlink_to(p.name)
-            except OSError:
-                shutil.copy2(p, alias)
-        vae_path = str(alias)
 
-    if lm_path and Path(lm_path).exists():
-        p = Path(lm_path)
-        models_dir = models_dir or str(p.parent)
-        alias = p.parent / f"yue2-lm-{p.stem.lower()}.gguf"
-        if not alias.exists():
-            try:
-                alias.symlink_to(p.name)
-            except OSError:
-                shutil.copy2(p, alias)
-        lm_path = str(alias)
+def _ensure_trainer_models(cfg: LoraTrainConfig) -> Iterator[str]:
+    """Download scragnog/YuE2-GGUF files required by HOT-Step-CPP ace-train if missing."""
+    from huggingface_hub import hf_hub_download
 
-    return models_dir, vae_path, lm_path
+    t_dir = _trainer_models_dir(cfg)
+    t_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clean up legacy symlinks from Serveurperso models that cause GGUF metadata mismatch
+    parent_models = t_dir.parent
+    for old_link in parent_models.glob("yue2-*.gguf"):
+        if old_link.is_symlink():
+            old_link.unlink(missing_ok=True)
+
+    required = ["yue2-vae-standard-f32.gguf", "yue2-lm-q8_0.gguf", "yue2-tok-f16.gguf"]
+    for fname in required:
+        dest = t_dir / fname
+        if not dest.exists():
+            yield f"⬇️ Mengunduh {fname} dari scragnog/YuE2-GGUF (khusus ace-train)...\n"
+            hf_hub_download(repo_id="scragnog/YuE2-GGUF", filename=fname, local_dir=str(t_dir))
+            yield f"✅ {fname} siap.\n"
 
 
 def build_preprocess_command(cfg: LoraTrainConfig, cache_dir: str | Path) -> list[str]:
     """Build the ace-train yue2-preprocess CLI command."""
-    models_dir, vae_path, _ = _ensure_ace_train_model_links(cfg)
-    cmd = [
+    t_dir = _trainer_models_dir(cfg)
+    return [
         _resolve_trainer_bin(cfg),
         "yue2-preprocess",
         "--audio", str(cfg.dataset_dir),
         "--out", str(cache_dir),
         "--caption-mode", "yue2",
         "--ffmpeg", "ffmpeg",
+        "--models", str(t_dir),
+        "--vae", str(t_dir / "yue2-vae-standard-f32.gguf"),
     ]
-    if models_dir:
-        cmd.extend(["--models", models_dir])
-    if vae_path:
-        cmd.extend(["--vae", vae_path])
-    return cmd
 
 
 def build_train_command(cfg: LoraTrainConfig, manifest_path: str | Path | None = None) -> list[str]:
     """Build the ace-train yue2-nar-train CLI command for YuE2 LoRA training."""
     binary = _resolve_trainer_bin(cfg)
-    models_dir, _, lm_path = _ensure_ace_train_model_links(cfg)
+    t_dir = _trainer_models_dir(cfg)
     out_path = Path(cfg.output_dir) / cfg.adapter_name
     manifest = str(manifest_path or (out_path / "cache" / "yue2_preprocess.json"))
-    cmd = [
+    return [
         binary,
         "yue2-nar-train",
         "--manifest", manifest,
@@ -159,12 +153,9 @@ def build_train_command(cfg: LoraTrainConfig, manifest_path: str | Path | None =
         "--lr", str(cfg.learning_rate),
         "--steps", str(cfg.max_updates),
         "--save-every", str(cfg.save_every),
+        "--models", str(t_dir),
+        "--lm", str(t_dir / "yue2-lm-q8_0.gguf"),
     ]
-    if models_dir:
-        cmd.extend(["--models", models_dir])
-    if lm_path:
-        cmd.extend(["--lm", lm_path])
-    return cmd
 
 
 def _run_and_stream(cmd: list[str], env: dict[str, str]) -> Iterator[tuple[str, int | None]]:
@@ -202,6 +193,10 @@ def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
     bin_dir = str(binary.parent)
     env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else bin_dir
 
+    # Stage 0: Ensure scragnog/YuE2-GGUF trainer models exist
+    for msg in _ensure_trainer_models(cfg):
+        yield msg
+
     # Stage 1: yue2-preprocess
     yield "=== [1/2] Menjalankan yue2-preprocess (VAE latents & manifest) ===\n"
     prep_cmd = build_preprocess_command(cfg, cache_dir)
@@ -217,14 +212,15 @@ def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
 
     manifest_path = cache_dir / "yue2_preprocess.json"
 
-    # Stage 1b (optional): yue2-tokenize if tokenizer GGUF exists
-    if cfg.tokenizer_model and Path(cfg.tokenizer_model).exists():
+    # Stage 1b: yue2-tokenize
+    tok_file = _trainer_models_dir(cfg) / "yue2-tok-f16.gguf"
+    if tok_file.exists():
         yield "\n=== [1b] Menjalankan yue2-tokenize ===\n"
         tok_cmd = [
             str(binary),
             "yue2-tokenize",
             "--manifest", str(manifest_path),
-            "--tok", cfg.tokenizer_model,
+            "--tok", str(tok_file),
             "--ffmpeg", "ffmpeg",
         ]
         for line, code in _run_and_stream(tok_cmd, env):
