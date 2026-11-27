@@ -1,0 +1,21 @@
+services:
+  yue2-studio:
+    build: .
+    container_name: yue2-studio
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+      - "8087:8087"
+    environment:
+      - YUE_QUANT=Q8_0
+      - GRADIO_SHARE=0
+      - YUE_WORKSPACE=/data/yue2-workspace
+    volumes:
+      - ./yue2-workspace:/data/yue2-workspace
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

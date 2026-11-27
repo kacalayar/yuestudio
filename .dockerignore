@@ -1,0 +1,8 @@
+.git
+__pycache__
+*.pyc
+.pytest_cache
+yue2-workspace/models
+yue2-workspace/library
+yue2-workspace/datasets
+yue2-workspace/trained_loras
