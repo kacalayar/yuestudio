@@ -128,12 +128,17 @@ def stream_training(cfg: LoraTrainConfig) -> Iterator[str]:
     Path(cfg.output_dir, cfg.adapter_name).mkdir(parents=True, exist_ok=True)
     yield f"[CMD] {' '.join(cmd)}\n"
 
+    env = os.environ.copy()
+    bin_dir = str(binary.parent)
+    env["LD_LIBRARY_PATH"] = f"{bin_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else bin_dir
+
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        env=env,
     )
     assert proc.stdout is not None
     for line in proc.stdout:

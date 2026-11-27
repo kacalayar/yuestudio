@@ -27,6 +27,7 @@ PY
 
 export ACE_TRAIN_BIN="${ACE_TRAIN_BIN:-$BIN_DIR/ace-train}"
 export YUE_SERVER_URL="${YUE_SERVER_URL:-http://127.0.0.1:8087}"
+export LD_LIBRARY_PATH="$BIN_DIR:${LD_LIBRARY_PATH:-}"
 
 echo "Starting yue-server on port 8087..."
 "$BIN_DIR/yue-server" \

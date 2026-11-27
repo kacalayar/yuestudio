@@ -21,6 +21,7 @@ RUN git clone --recurse-submodules https://github.com/timoncool/yue2.cpp.git /op
     && cmake --build /opt/yue2.cpp/build --config Release -j "$(nproc)" \
     && mkdir -p /app/yue2-workspace/bin \
     && cp /opt/yue2.cpp/build/yue-server /app/yue2-workspace/bin/yue-server \
+    && find /opt/yue2.cpp/build -name '*.so*' -exec cp -a {} /app/yue2-workspace/bin/ \; \
     && rm -rf /opt/yue2.cpp
 
 # Build HOT-Step-CPP (ace-train for LoRA training)
@@ -30,6 +31,7 @@ RUN git clone --recurse-submodules https://github.com/timoncool/HOT-Step-CPP.git
        -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89" \
     && cmake --build /opt/HOT-Step-CPP/engine/build --target ace-train --config Release -j "$(nproc)" \
     && cp /opt/HOT-Step-CPP/engine/build/ace-train /app/yue2-workspace/bin/ace-train \
+    && find /opt/HOT-Step-CPP/engine/build -name '*.so*' -exec cp -a {} /app/yue2-workspace/bin/ \; \
     && rm -rf /opt/HOT-Step-CPP
 
 COPY dashboard/requirements.txt /app/dashboard/requirements.txt

@@ -30,6 +30,7 @@ if [ ! -x "$BIN_DIR/yue-server" ]; then
         -DCMAKE_CUDA_ARCHITECTURES="$CUDA_ARCHS"
     cmake --build "$SRC_YUE/build" --config Release -j "$(nproc)"
     cp "$SRC_YUE/build/yue-server" "$BIN_DIR/yue-server"
+    find "$SRC_YUE/build" -name '*.so*' -exec cp -a {} "$BIN_DIR/" \;
     chmod +x "$BIN_DIR/yue-server"
 fi
 
@@ -46,6 +47,7 @@ if [ "$BUILD_TRAINER" = "1" ]; then
             -DCMAKE_CUDA_ARCHITECTURES="$CUDA_ARCHS"
         cmake --build "$SRC_TRAIN/engine/build" --target ace-train --config Release -j "$(nproc)"
         cp "$SRC_TRAIN/engine/build/ace-train" "$BIN_DIR/ace-train"
+        find "$SRC_TRAIN/engine/build" -name '*.so*' -exec cp -a {} "$BIN_DIR/" \;
         chmod +x "$BIN_DIR/ace-train"
     fi
 fi
